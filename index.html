@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#070c18">
+  <meta name="description" content="泰拉边境：一款完全离线的程序化像素沙盒生存游戏。挖掘、建造、合成，在昼夜交替的世界里活过每一个夜晚。">
+  <title>泰拉边境 · Terra Frontier</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23070c12'/%3E%3Cpath d='M3 12h10v2H3z' fill='%235f8a4b'/%3E%3Cpath d='M2 8h12v4H2z' fill='%237a4b2b'/%3E%3Cpath d='M2 8h12v1H2z' fill='%237abd50'/%3E%3Cpath d='M9 2h2v7H9z' fill='%23e9bd62'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="title-mode">
+  <div id="app">
+    <canvas id="game-canvas" width="960" height="540" aria-label="泰拉边境游戏世界"></canvas>
+
+    <!-- ============ 游戏 HUD ============ -->
+    <div id="hud" class="hidden">
+      <div id="top-left">
+        <div id="hearts" aria-label="生命值"></div>
+        <div id="status-row">
+          <div id="shelter-buff" class="buff hidden" title="你处在一个封闭的安全屋内：生命恢复加快，怪物不会在屋内生成。">
+            <span class="buff-icon">⌂</span><span>庇护</span>
+          </div>
+          <div id="depth-chip" class="buff depth">地表</div>
+        </div>
+      </div>
+
+      <div id="clock-panel">
+        <canvas id="clock-canvas" width="144" height="144"></canvas>
+        <div class="clock-copy">
+          <div id="day-label">第 1 天</div>
+          <div id="time-label">08:00</div>
+          <div id="phase-label">白昼</div>
+        </div>
+      </div>
+
+      <div id="toast-stack" aria-live="polite"></div>
+
+      <div id="bottom-center">
+        <div id="item-name">&nbsp;</div>
+        <div id="hotbar"></div>
+        <div id="hint-row"><span><kbd>E</kbd> 背包 / 合成</span><span><kbd>A</kbd><kbd>D</kbd> 移动</span><span><kbd>空格</kbd> 跳跃</span></div>
+      </div>
+
+      <div id="interaction-hint" class="hidden"></div>
+      <div id="combo-toast" class="hidden"></div>
+    </div>
+
+    <!-- ============ 标题界面 ============ -->
+    <div id="title-screen">
+      <div class="title-vignette"></div>
+      <header class="title-header">
+        <div class="brand-small"><span class="brand-dot"></span> TERRA FRONTIER</div>
+        <div class="title-header-right">程序化像素世界 · 单机生存</div>
+      </header>
+
+      <main class="title-main">
+        <div class="title-lockup">
+          <div class="eyebrow">挖掘 · 建造 · 生存 · 探索</div>
+          <h1 class="logo">
+            <span class="logo-cn">泰拉边境</span>
+            <span class="logo-shadow" aria-hidden="true">泰拉边境</span>
+          </h1>
+          <p class="tagline">在无垠的像素大地上，点亮属于你的第一盏灯火。</p>
+        </div>
+
+        <div class="menu-card">
+          <button id="btn-continue" class="game-btn ghost">
+            <span class="btn-main">继续旅程</span>
+            <span id="continue-meta" class="btn-meta">尚未找到存档</span>
+          </button>
+          <button id="btn-new" class="game-btn primary">
+            <span class="btn-main">创建新世界</span>
+            <span class="btn-meta">随机生成一片可破坏的大地</span>
+          </button>
+          <div class="seed-row">
+            <label for="seed-input">世界种子</label>
+            <input id="seed-input" type="text" maxlength="32" autocomplete="off" spellcheck="false" placeholder="留空则随机">
+          </div>
+          <div class="title-actions">
+            <button id="btn-title-help" class="text-btn">操作说明</button>
+            <span class="dot-sep">·</span>
+            <button id="btn-title-sound" class="text-btn">音效：开启</button>
+          </div>
+        </div>
+      </main>
+
+      <footer class="title-footer">
+        <div><span class="keycap">A</span><span class="keycap">D</span> 移动　<span class="keycap">SPACE</span> 跳跃　<span class="keycap">E</span> 合成　<span class="keycap">ESC</span> 暂停</div>
+        <div class="version">v1.0 · 纯手绘像素 · 建议使用耳机</div>
+      </footer>
+    </div>
+
+    <!-- ============ 加载 ============ -->
+    <div id="loading-screen" class="hidden">
+      <div class="loading-inner">
+        <div class="loading-rune"><i></i><i></i><i></i><i></i></div>
+        <div class="loading-title">正在塑造世界</div>
+        <div id="loading-tip" class="loading-tip">让群山隆起，让洞穴呼吸……</div>
+        <div class="loading-bar"><i></i></div>
+      </div>
+    </div>
+
+    <!-- ============ 背包 / 合成 ============ -->
+    <div id="inventory-screen" class="overlay hidden">
+      <div class="panel inventory-panel">
+        <header class="panel-header">
+          <div>
+            <div class="eyebrow small">INVENTORY &amp; CRAFTING</div>
+            <h2>旅人的行囊</h2>
+          </div>
+          <div class="panel-header-right">
+            <span class="panel-note">时间已暂停</span>
+            <button class="icon-btn close-btn" data-close="inventory" aria-label="关闭">×</button>
+          </div>
+        </header>
+
+        <div class="inventory-body">
+          <aside class="character-pane">
+            <div class="portrait-frame">
+              <canvas id="char-preview" width="144" height="216"></canvas>
+              <div class="portrait-glow"></div>
+            </div>
+            <h3 class="char-name">旅人</h3>
+            <div class="char-stats">
+              <div class="stat"><span>生命</span><strong id="stat-hp">100 / 100</strong></div>
+              <div class="stat"><span>镐力</span><strong id="stat-pick">1.0</strong></div>
+              <div class="stat"><span>击杀</span><strong id="stat-kills">0</strong></div>
+              <div class="stat"><span>深度</span><strong id="stat-depth">地表</strong></div>
+            </div>
+            <div class="character-tip">
+              <span class="tip-label">生存提示</span>
+              <p id="char-tip">先砍树获得木材，再用 <b>E</b> 制作工作台。天黑前，记得给自己搭一间有门的小屋。</p>
+            </div>
+          </aside>
+
+          <section class="inventory-pane">
+            <div class="section-heading">
+              <h3>物品</h3>
+              <span id="bag-count" class="muted">0 / 40</span>
+            </div>
+            <div id="inventory-grid" class="inventory-grid"></div>
+            <p class="slot-help">点击拿起 / 放下 · 右键取出一半 · 前 10 格为快捷栏</p>
+          </section>
+
+          <section class="crafting-pane">
+            <div class="section-heading">
+              <h3>合成</h3>
+              <span id="nearby-stations" class="station-badge">无制作站</span>
+            </div>
+            <div id="craft-tabs" class="craft-tabs"></div>
+            <div id="recipe-list" class="recipe-list"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 暂停 ============ -->
+    <div id="pause-screen" class="overlay hidden">
+      <div class="panel pause-panel">
+        <div class="eyebrow">PAUSED</div>
+        <h2 class="pause-title">旅途暂歇</h2>
+        <p class="pause-sub">世界仍在等风来。</p>
+        <div class="pause-buttons">
+          <button class="game-btn primary" id="btn-resume"><span class="btn-main">继续游戏</span><span class="btn-meta">回到这片大地</span></button>
+          <button class="game-btn ghost" id="btn-save"><span class="btn-main">保存进度</span><span class="btn-meta" id="autosave-label">自动存档已开启</span></button>
+          <button class="game-btn ghost" id="btn-pause-help"><span class="btn-main">操作说明</span><span class="btn-meta">查看按键与生存提示</span></button>
+          <button class="game-btn ghost danger" id="btn-quit"><span class="btn-main">保存并返回标题</span><span class="btn-meta">下次可以继续旅程</span></button>
+        </div>
+        <div class="pause-meta">
+          <span id="pause-world-info">种子 —</span>
+          <span id="pause-playtime">游戏时间 00:00</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ 帮助 ============ -->
+    <div id="help-screen" class="overlay hidden">
+      <div class="panel help-panel">
+        <header class="panel-header">
+          <div>
+            <div class="eyebrow small">FIELD GUIDE</div>
+            <h2>生存手册</h2>
+          </div>
+          <button class="icon-btn close-btn" data-close="help" aria-label="关闭">×</button>
+        </header>
+        <div class="help-body">
+          <div class="help-column">
+            <h3>操作</h3>
+            <div class="control-row"><span class="keys"><kbd>A</kbd><kbd>D</kbd></span><span>左右移动</span></div>
+            <div class="control-row"><span class="keys"><kbd>空格</kbd></span><span>跳跃 / 水中上浮</span></div>
+            <div class="control-row"><span class="keys"><kbd>S</kbd> + <kbd>空格</kbd></span><span>从木平台上落下</span></div>
+            <div class="control-row"><span class="keys"><kbd>左键</kbd></span><span>使用工具、攻击、放置方块</span></div>
+            <div class="control-row"><span class="keys"><kbd>右键</kbd></span><span>开关门 / 拆除背景墙 / 与向导交谈</span></div>
+            <div class="control-row"><span class="keys"><kbd>1</kbd>–<kbd>0</kbd> / 滚轮</span><span>切换快捷栏</span></div>
+            <div class="control-row"><span class="keys"><kbd>E</kbd></span><span>打开背包与合成</span></div>
+            <div class="control-row"><span class="keys"><kbd>Esc</kbd></span><span>暂停 / 关闭面板</span></div>
+            <div class="control-row"><span class="keys"><kbd>M</kbd></span><span>静音 / 恢复声音</span></div>
+          </div>
+          <div class="help-column">
+            <h3>生存要诀</h3>
+            <ul class="survival-list">
+              <li><b>从树开始。</b> 装备斧头，按住左键砍树；木材几乎是一切的开端。</li>
+              <li><b>向下探索。</b> 铜、铁、金与生命水晶藏在岩层和洞穴里。右键可以拆掉背景墙。</li>
+              <li><b>合成。</b> 靠近平坦处放下工作台，靠近后才能制作更多东西；熔炉冶炼矿锭，铁砧打造武器。</li>
+              <li><b>过夜。</b> 19:30 后僵尸会出现在地表。用实体方块、门、桌椅和火把建一间封闭小屋，即可获得“庇护”。</li>
+              <li><b>变强。</b> 更好的镐子能挖更硬的矿；剑的挥砍范围更远，弓与法杖可以远程作战。</li>
+              <li><b>生命水晶。</b> 在地下找到粉色水晶并使用，永久增加 20 点生命上限。</li>
+            </ul>
+          </div>
+        </div>
+        <footer class="help-footer"><span>种子、时间与建造进度会自动保存在本机浏览器中。</span><button id="btn-help-ok" class="game-btn small">知道了</button></footer>
+      </div>
+    </div>
+
+    <!-- ============ 死亡 ============ -->
+    <div id="death-screen" class="overlay death hidden">
+      <div class="death-content">
+        <div class="death-eyebrow">YOU WERE SLAIN</div>
+        <h2>长夜吞没了你</h2>
+        <p id="death-reason">你被僵尸击败了。</p>
+        <div class="death-rule"></div>
+        <button id="btn-respawn" class="game-btn primary"><span class="btn-main">在营地醒来</span><span class="btn-meta">物品不会丢失</span></button>
+        <div id="respawn-timer" class="respawn-timer"></div>
+      </div>
+    </div>
+
+    <!-- ============ 新世界确认 ============ -->
+    <div id="confirm-screen" class="overlay hidden">
+      <div class="panel confirm-panel">
+        <h3>开启新的旅程？</h3>
+        <p>本机已有一份存档。创建新世界会立即覆盖旧进度，此操作无法撤销。</p>
+        <div class="confirm-actions">
+          <button id="btn-confirm-cancel" class="text-btn">再想想</button>
+          <button id="btn-confirm-new" class="game-btn primary small">创建新世界</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 全局小按钮 -->
+    <div id="global-buttons">
+      <button id="btn-sound" class="round-btn" title="静音 (M)" aria-label="静音">♪</button>
+      <button id="btn-help" class="round-btn" title="操作说明" aria-label="操作说明">?</button>
+    </div>
+
+    <div id="item-tooltip" class="hidden"></div>
+    <div id="held-item" class="hidden"><canvas width="32" height="32"></canvas><span>1</span></div>
+    <div id="damage-flash"></div>
+    <div id="fade-flash"></div>
+    <div id="fps" class="hidden"></div>
+  </div>
+
+  <script defer src="js/util.js"></script>
+  <script defer src="js/data.js"></script>
+  <script defer src="js/audio.js"></script>
+  <script defer src="js/world.js"></script>
+  <script defer src="js/entities.js"></script>
+  <script defer src="js/render.js"></script>
+  <script defer src="js/render2.js"></script>
+  <script defer src="js/render3.js"></script>
+  <script defer src="js/ui.js"></script>
+  <script defer src="js/game.js"></script>
+</body>
+</html>
